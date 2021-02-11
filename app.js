@@ -4,6 +4,7 @@ const mongoose= require("mongoose");
 
 const userRoute=require('./routes/users');
 const authRoute=require('./routes/auth');
+let port=process.env.PORT||3000;
 
 const app= express();
 
@@ -29,8 +30,8 @@ app.use((error,req,res,next)=>{
 mongoose
     .connect('mongodb+srv://test:test@teachermng.cboef.mongodb.net/teachermng?retryWrites=true&w=majority', { useNewUrlParser: true, useUnifiedTopology: true })
     .then(result=>{
-        app.listen(8080);
+        app.listen(port);
     })
     .catch(err=>{
-        console.log(err);
+        console.log('Database connection failed'+err);
     });
