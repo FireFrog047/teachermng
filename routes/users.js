@@ -4,12 +4,10 @@ const{body}=require("express-validator");
 const router=express.Router();
 
 const userController=require('../controller/users');
-const authController=require('../controller/auth');
 const User =require('../models/users');
 
-router.post('/',authController.isAuth,userController.showHome);
-router.get('/showusers',authController.isAuth,userController.showUsers);
-
+router.get('/',userController.getShowHome);
+router.post('/',userController.postShowHome);
 router.post('/createuser',[
     body('email')
      .trim()
@@ -24,23 +22,23 @@ router.post('/createuser',[
                 }
             });
      }),
-    body('userName')
-     .trim()
-     .custom((value,{req})=>{
-        return User
-            .findOne({userName:value})
-            .then(userNameValue=>{
-                if(userNameValue){
-                    return Promise.reject('User Name already exist');
-                }
-            });
-     }),
-    body('mobileNumber')
-     .trim()
-     .notEmpty()
-     .withMessage('Mobile number required')
-     .isLength({min:11,max:11})
-     .withMessage('Valid mobile number required 11 digit'),  
+    // body('userName')
+    //  .trim()
+    //  .custom((value,{req})=>{
+    //     return User
+    //         .findOne({userName:value})
+    //         .then(userNameValue=>{
+    //             if(userNameValue){
+    //                 return Promise.reject('User Name already exist');
+    //             }
+    //         });
+    //  }),
+    // body('mobileNumber')
+    //  .trim()
+    //  .notEmpty()
+    //  .withMessage('Mobile number required')
+    //  .isLength({min:11,max:11})
+    //  .withMessage('Valid mobile number required 11 digit'),  
     body('name')
      .trim()
      .not()

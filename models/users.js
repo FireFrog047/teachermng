@@ -12,15 +12,12 @@ const userSchema=new Schema({
     },
     userName:{
         type:String,
-        required:true
     },
     role:{
         type:String,
-        required:true
     },
     mobileNumber:{
         type:String,
-        required:true
     },
     password:{
         type:String,
@@ -28,11 +25,9 @@ const userSchema=new Schema({
     },
     division:{
         type:String,
-        required:true
     },
     city:{
         type:String,
-        required:true
     },
     refreshToken:{
         type:String},

@@ -1,15 +1,24 @@
 const bcrypt = require('bcryptjs');
 const crypto=require('crypto');
+const dotenv=require('dotenv');
 const { validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
+
 const User =require('../models/users');
+const User_data =require('../models/userdata');
+const User_posts =require('../models/posts');
+
 const nodemailer = require('nodemailer');
 const {google} = require('googleapis');
+dotenv.config();
+const client_secret=process.env.mail_client_secret;
+const refresh_token=process.env.mail_refresh_token;
+const client_id=process.env.mail_client_id;
+const redirectUri=process.env.mail_redirectUri;
 
-const client_secret='3FmWMdwmwjgFv0je1I1SF8ii'
-const refresh_token='1//04RSRzJa2eO-HCgYIARAAGAQSNwF-L9Irfz4zsvSvMCYwd84q6GPK58JugcWKpbnWOPJPcD6OaxfnGi-7oxyI_o8n2OsCnHNgkWA'
-const client_id='141860614225-27i3ks26rcgcu03e2raoru8niobodamg.apps.googleusercontent.com'
-const redirectUri='https://developers.google.com/oauthplayground';
+// console.log(require('crypto').randomBytes(256).toString('base64'))
+const refreshSecretKey=process.env.jwt_refreshSecretKey;
+const secretKey=process.env.jwt_secretKey;
 
 const oAuth2Client= new google.auth.OAuth2(client_id,client_secret,redirectUri);
 oAuth2Client.setCredentials({refresh_token:refresh_token});
@@ -43,85 +52,114 @@ async function sendmail(sendFrom,sendTo,sendSubject,sendText,sendHtml){
     }
 };
 
-
-// console.log(require('crypto').randomBytes(256).toString('base64'))
-const refreshSecretKey='8MvQCbvPh37r7Y0a5jQTAEywjGWUNbrpEMi7Z5/RXG2N0gxHllkZG2IRzrw+1MaKHozPVM6GxbTQHrdmnyyeH7b+IpIZd6/qeWCoc4O1ccLv0vq40a+N/4grFqG6w+3NnrU0Q/W1THX/pESGB1SkY1/2er1tFDbTFSdTl/w0Js6GV5gD7cC5xGvK7lYcduQKNKXCzbulKt0Tf8qJkSnQfDGAnNed9QD4ObARSUT5X0Dl3nwHyfIi2ofySlms/v41ItHwFIVJ1Pkr7iwrdAUpLzyENf4ywNkN3kwcOgjg5V7mpSa6by2vZevQ5MdEoW6PnGf6LGEKtf6wQFF/IDySyg';
-const secretKey='8UUyVG8oESWqXZUMGiRwXUlRGSJc1MMeGz3UemdFjl7ZZOMVYArUHBONWP/LcyIBi4DDoaTis8FZdCMLCXgXkpG6E1zuBCZfpifUEJuNDd3bRExY8qKnS1EwlKC2maJA/AFMsaW+M3CYlWCnz4x56qVyKd6s7t63sYRStKCugAhanaY3lsYWnDog0rRzLvfQiytOGfmf2e0ni1+WpuUrT1Sw/8y6xCAE7p4JiNfFKktCKyHy74klhW8iZmpGsBEV/86hgQ2JPt1nrXbuWX2HCi2jIKmRPegZgzePnY2lVOg9xnV1chHjGV81ZVvTzVPp9sxDqFbsddcK31YTcD3n9Q';
-
 exports.isAuth=async (req,res,next)=>{
 
     const scKeyHeader=req.get('authorization');
-    let decodedUserScKey,userScKey;
+    let decodedUserScKey,userScKey,validReqUser;
 
     if(!scKeyHeader){
-        const error=new Error('NO token header');
+        const error=new Error('Not Authenicated, Please log in');
         error.statusCode=401;
         next(error);
     }else{
         userScKey=scKeyHeader.split(' ')[1];
         try{
             decodedUserScKey=await jwt.verify(userScKey,secretKey);
+            console.log('Secret key token after verification '+JSON.stringify(decodedUserScKey));
 
         }catch{
-            console.log('secret key failed');
+            const error=new Error('Not Authenicated, Please log in');
+            error.statusCode=401;
+            next(error);
         }
         if(!decodedUserScKey){
             let tempId;
             try{
                 const tempKeyId=await jwt.verify(userScKey,secretKey ,{ignoreExpiration: true});
                 tempId=tempKeyId.userId;
+                validReqUser=await User.findOne({_id:tempId});
             }
             catch(err){
-                err.statusCode=500;
-                err.message='jwt rfrsh decode failed';
                 return next(err);
             }
-            const validReqUser=await User.findOne({_id:tempId});
             if(!validReqUser){
                 const error=new Error('Invalid user token');
                 error.statusCode=401;
                 return next(error);
             }
             if(!validReqUser.refreshToken){
-                const error=new Error('Please Log in');
+                const error=new Error('No session active, please log in');
                 error.statusCode=401;
                 return next(error);
             }
             if(userScKey==validReqUser.accessToken){
-                const newUserScKey=jwt.sign(
+                
+                try{
+                    const validSession=await jwt.verify(validReqUser.refreshToken,refreshSecretKey);
+                    console.log('Refresh token after verification'+JSON.stringify(validSession));
+                    if(!validSession){
+                        const error=new Error('Session expired');
+                        error.statusCode=402;
+                        return next(error);
+                    }
+                    const newUserScKey=jwt.sign(
                     {   
                         userId: validReqUser._id.toString(),
                         email: validReqUser.email,
                     },
                     secretKey,
-                    {expiresIn:'1s'});
-                await User.updateOne({_id:tempId},{
+                    {expiresIn:'20m'});
+                    await User.updateOne({_id:tempId},{
                     accessToken:newUserScKey
-                });
-                req.headers['authorization'] ='Bearer '+newUserScKey;
-                req.userId=validReqUser._id.toString();
-                next();
-
+                    });
+                    req.headers['authorization'] ='Bearer '+newUserScKey;
+                    req.userId=validReqUser._id.toString();
+                    console.log(`New access token genarated ${newUserScKey}`);
+                    next();
+                }
+                catch(err){
+                    return next(err);
+                }
             }
             else{
-                const error=new Error('Token too old. Log in again');
+                const error=new Error('Token replased. Log in again');
                 error.statusCode=401;
                 return next(error);
             }
         }else{
             try{
-
-
                 req.userId=decodedUserScKey.userId;
+                console.log(decodedUserScKey.userId);
                 next();
 
             }catch(err){
-
+                return next(err);
             }
-
         }
     }
 };
+
+exports.updateProfile=async (req,res,next)=>{    
+    const valueToUpdate=['name','userName','role','mobileNumber','division','city'];
+    let valueForDb={};
+    try{
+        valueToUpdate.forEach(value =>{
+            if (req.body[value]){
+                valueForDb[value]=req.body[value];
+            }
+        });
+        const updateSuccess=await User.updateOne({_id:req.userId},valueForDb)
+        if(updateSuccess.nModified>0){
+            res.status(201).json({'Message':'Update Successfull'});
+        }
+        else{
+            res.status(400).json({'Message':'Update is not successfull'});
+        }
+    }
+    catch(err){
+        res.status(400).json(err);
+    }
+}
 
 exports.login=async (req,res,next)=>{
     const email =req.body.email;
@@ -254,8 +292,8 @@ exports.initiateResetPassword=async (req,res,next)=>{
                 'Teacher Mangement <monjurul.47@gmail.com>',
                 validUser.email,
                 'Reset Password request',
-                `Password reset request issued for ${validUser.userName}. Please click this link to reset your password http://localhost:8080/auth/respwt${resetPwToken}`,
-                `<h1>Password reset request issued for ${validUser.userName}</h1>.
+                `Password reset request issued for ${validUser.name}. Please click this link to reset your password http://localhost:8080/auth/respwt${resetPwToken}`,
+                `<h1>Password reset request issued for ${validUser.name}</h1>.
                  <p>Please click this <a href="http://localhost:8080/auth/respwt${resetPwToken}">link </a>to reset your password. This link will valid for next 24 hours</p>`
             );
 
@@ -388,4 +426,86 @@ exports.validateResetPassword=async (req,res,next)=>{
         };
         next(error);
     }
+};
+
+exports.showUsers=async (req,res,next)=>{
+   try{
+      const users=await User.find();
+      res.status(200).json(users);
+   }
+   catch(err){
+      if(!err.statusCode){
+         err.statusCode=500;
+      }
+      err.message='Server Connection Failed';
+      err.data=err.errors;
+      next(err);   
+   }
+};
+
+//post management
+exports.showPosts=async (req,res,next)=>{
+   try{
+      const all_posts=await User_posts.find();
+      res.status(200).json(all_posts);
+   }
+   catch(err){
+      if(!err.statusCode){
+         err.statusCode=500;
+      }
+      err.message='Server Connection Failed';
+      err.data=err.errors;
+      next(err);   
+   }
+};
+
+exports.createPost=async (req,res,next)=>{
+   try{
+      const validUser= await User.findOne({_id:req.userId});
+      const newPost= new User_posts({
+        authorId:req.userId,
+        authorEmail:validUser.email,
+        post:[{title:req.body.title},{content:req.body.content}]
+      })
+      const confirmP=await newPost.save();
+      res.status(200).json(confirmP);
+   }
+   catch(err){
+      if(!err.statusCode){
+         err.statusCode=500;
+      }
+      err.message='Server Connection Failed';
+      err.data=err.errors;
+      next(err);   
+   }
+};
+
+exports.deletePost=async (req,res,next)=>{
+   try{
+      const users=await User.find();
+      res.status(200).json(users);
+   }
+   catch(err){
+      if(!err.statusCode){
+         err.statusCode=500;
+      }
+      err.message='Server Connection Failed';
+      err.data=err.errors;
+      next(err);   
+   }
+};
+
+exports.updatePost=async (req,res,next)=>{
+   try{
+      const users=await User.find();
+      res.status(200).json(users);
+   }
+   catch(err){
+      if(!err.statusCode){
+         err.statusCode=500;
+      }
+      err.message='Server Connection Failed';
+      err.data=err.errors;
+      next(err);   
+   }
 };

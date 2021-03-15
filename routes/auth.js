@@ -1,13 +1,16 @@
 const express=require('express');
 const{body}=require("express-validator");
 const authController=require('../controller/auth');
-const User =require('../models/users');
 
 const router=express.Router();
 
+router.get('/showposts',authController.showPosts);
+router.get('/createpost',authController.isAuth,authController.createPost);
+router.get('/showusers',authController.isAuth,authController.showUsers);
 router.post('/login',authController.login);
 router.post('/initiateResetPassword',authController.initiateResetPassword);
 router.get('/logout',authController.isAuth,authController.logout);
+router.put('/updateProfile',authController.isAuth,authController.updateProfile);
 router.put('/changePassword',[    
     body('newPassword')
      .trim()

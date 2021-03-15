@@ -1,6 +1,19 @@
-let sat=[];
+const dummy={
+    "name":"test",
+    'userName':'firefrog',
+    'role':'admin',
+    'mobileNumber':'12345'
+}
 
-sat[20]=15;
-sat[15]=10;
+function methodName (arguments) {
+    const valueToUpdate=['name','userName','role','mobileNumber','division','city'];
+    let valueForDb={};
+    valueToUpdate.forEach(value =>{
+        if (arguments[value]){
+            valueForDb[value]=arguments[value];
+        }
+    });
+    return valueForDb;
+}
 
-console.log(sat[15]);
+console.log(methodName(dummy));
